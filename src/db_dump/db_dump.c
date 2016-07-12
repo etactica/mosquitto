@@ -13,6 +13,7 @@ and the Eclipse Distribution License is available at
 Contributors:
    Roger Light - initial implementation and documentation.
 */
+#define _GNU_SOURCE // asprintf yo
 
 #include <arpa/inet.h>
 #include <assert.h>
@@ -50,6 +51,8 @@ struct msg_store_chunk
 {
 	UT_hash_handle hh;
 	dbid_t store_id;
+	char *topic;
+	char *payload;
 	uint32_t length;
 };
 
@@ -69,6 +72,7 @@ struct db_client
 
 struct db_client_msg
 {
+	UT_hash_handle hhc;
 	char *client_id;
 	uint8_t qos, retain, direction, state, dup;
 	dbid_t store_id;
@@ -90,9 +94,13 @@ static uint32_t db_version;
 static int stats = 0;
 static int client_stats = 0;
 static int do_print = 1;
+static char *client_dump = NULL;
 
 struct client_chunk *clients_by_id = NULL;
 struct msg_store_chunk *msgs_by_id = NULL;
+struct msg_store_chunk *fat_msgs_by_id = NULL;
+
+struct db_client_msg *client_msgs_by_client = NULL;
 
 static void
 free__db_sub(struct db_sub *sub)
@@ -146,7 +154,7 @@ print_db_client(struct db_client *client, int length)
 }
 
 static void
-print_db_client_msg(struct db_client_msg *msg, int length)
+orig__print_db_client_msg(struct db_client_msg *msg, int length)
 {
 	printf("DB_CHUNK_CLIENT_MSG:\n");
 	printf("\tLength: %d\n", length);
@@ -158,6 +166,63 @@ print_db_client_msg(struct db_client_msg *msg, int length)
 	printf("\tDirection: %d\n", msg->direction);
 	printf("\tState: %d\n", msg->state);
 	printf("\tDup: %d\n", msg->dup);
+}
+
+static void
+_dump_msg_store_chunk(struct msg_store_chunk *msc, int qos)
+{
+	if (!msc) {
+		return;
+	}
+	
+	printf("Dumping msg to file: %s (%d bytes)\n", msc->topic, msc->length);
+	char *fname = NULL;
+	// Fake out a new "topic" for the filename, replace / with +, which is an illegal publish topic char.
+	char *topic_safe = strdup(msc->topic);
+	if (!topic_safe) {
+		fprintf(stderr, "Failed to prepare topic for sanitizing!\n");
+		return;
+	}
+	for (int i = 0; i < strlen(topic_safe); i++) {
+		if (topic_safe[i] == '/') {
+			topic_safe[i] = '+';
+		}
+	}
+	int rc = asprintf(&fname, "msgdump_%"PRIu64":%d:%s", msc->store_id, qos, topic_safe);
+	if (rc < 0) {
+		fprintf(stderr, "Failed to allocate/print filename!\n");
+		goto error;
+	}
+	int fd = open(fname, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	if (fd < 0) {
+		fprintf(stderr, "Failed to open output file: %s: %s\n", fname, strerror(errno));
+		goto error;
+	}
+	if (msc->length) {
+		rc = write(fd, msc->payload, msc->length);
+		if (rc != msc->length) {
+			fprintf(stderr, "Failed to write to file: %s: %s\n", fname, strerror(errno));
+		}
+	}
+	close(fd);
+error:
+	if (fname) {
+		free(fname);
+	}
+	if (topic_safe) {
+		free(topic_safe);
+	}
+}
+
+static void
+print_db_client_msg(struct db_client_msg *msg, int length)
+{
+	struct msg_store_chunk *msc;
+	printf("CLIENT: %s, StoreID: <%" PRIu64 ">\n", msg->client_id, msg->store_id);
+	if (client_dump && (strcmp(client_dump, msg->client_id) == 0)) {
+		HASH_FIND(hh, fat_msgs_by_id, &msg->store_id, sizeof(dbid_t), msc);
+		_dump_msg_store_chunk(msc, msg->qos);
+	}
 }
 
 static void
@@ -379,6 +444,29 @@ static int db__msg_store_chunk_restore(struct mosquitto_db *db, FILE *db_fd, uin
 		}
 	}
 
+	if (client_dump){
+		/* suck ram keeping all the payloads for everybody! need to keep them all because we don't have the client stats yet! */
+		mcs = calloc(1, sizeof(struct msg_store_chunk));
+		if(!mcs){
+			errno = ENOMEM;
+			goto error;
+		}
+		mcs->store_id = msg->store_id;
+		mcs->length = msg->payloadlen;
+		mcs->topic = strdup(msg->topic);
+		if (!mcs->topic) {
+			errno = ENOMEM;
+			goto error;
+		}
+		mcs->payload = malloc(msg->payloadlen);
+		if(!mcs->payload) {
+			errno = ENOMEM;
+			goto error;
+		}
+		memcpy(mcs->payload, msg->payload, msg->payloadlen);
+		HASH_ADD(hh, fat_msgs_by_id, store_id, sizeof(dbid_t), mcs);
+	}
+
 	if(client_stats){
 		mcs = calloc(1, sizeof(struct msg_store_chunk));
 		if(!mcs){
@@ -486,6 +574,9 @@ int main(int argc, char *argv[])
 		client_stats = 1;
 		do_print = 0;
 		filename = argv[2];
+	}else if(argc == 4 && !strcmp(argv[1], "--client-dump")){
+		client_dump = argv[2];
+		filename = argv[3];
 	}else{
 		fprintf(stderr, "Usage: db_dump [--stats | --client-stats] <mosquitto db filename>\n");
 		return 1;
