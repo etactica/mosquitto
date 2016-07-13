@@ -58,6 +58,7 @@ def domain(opts):
     rex = re.compile(opts.pattern)
     outstanding = set()
     fcount = 0
+    next = "w"
     for fn in glob.iglob(opts.files):
         log.debug("Considering file: %s", fn)
         m = rex.match(fn)
@@ -75,8 +76,12 @@ def domain(opts):
             else:
                 outstanding.add(PubRecord(info, fn))
         if opts.batch > 0 and fcount % opts.batch == 0:
+            if next == "w":
+                next = input("enter 'w' to wait after the next batch, or 'f' for full steam ahead")
             log.info("Batch of %d finished, waiting for completion...", opts.batch)
             outstanding = wait_for(outstanding, opts.dirgood)
+        if fcount % 25000 == 0:
+            input("fcount now %d, eny key to continue!" % fcount)
 
     log.info("Published %d messges, waiting on %d remaining pubacks", fcount, len(outstanding))
     wait_for(outstanding, opts.dirgood)
