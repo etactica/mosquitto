@@ -97,6 +97,6 @@ if __name__ == "__main__":
     parser.add_argument("-f", "--files", help="glob for files to scan", default="msgdump_*")
     parser.add_argument("-d", "--dirgood", help="Directory to move completed files to", default="repub-ok")
     # Like max in flight, except we don't do continual queue processing....
-    parser.add_argument("--batch", help="After this many messages, wait for confirmations before proceeding", default=1000)
+    parser.add_argument("--batch", help="After this many messages, wait for confirmations before proceeding", default=1000, type=int)
     options = parser.parse_args()
     domain(options)
