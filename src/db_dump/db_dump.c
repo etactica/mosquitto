@@ -579,6 +579,7 @@ int main(int argc, char *argv[])
 		filename = argv[3];
 	}else{
 		fprintf(stderr, "Usage: db_dump [--stats | --client-stats] <mosquitto db filename>\n");
+		fprintf(stderr, "   or: db_dump --client-dump <clientid> <mosquitto db filename>\n");
 		return 1;
 	}
 	memset(&db, 0, sizeof(struct mosquitto_db));
