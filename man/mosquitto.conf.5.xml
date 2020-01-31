@@ -1555,6 +1555,21 @@ openssl dhparam -out dhparam.pem 2048</programlisting>
 				</listitem>
 			</varlistentry>
 			<varlistentry>
+				<term><option>local_cleansession</option> [ true | false]</term>
+				<listitem>
+					<para>"regular" cleansession refers to the clean session property
+						on the remote bridge connection. local_cleansession refers to
+						whether the local connection should also be treated as clean session.
+						false will mean that you will still get outbound queued messages,
+						even if you don't get inbound queued messages.
+						true means that outbound messages will nto be queued.
+					</para>
+					<para>
+						Should default to the value of bridge.cleansession unless explicitly specified. (not well implemented)
+					</para>
+				</listitem>
+			</varlistentry>
+			<varlistentry>
 				<term><option>connection</option> <replaceable>name</replaceable></term>
 				<listitem>
 					<para>This variable marks the start of a new bridge

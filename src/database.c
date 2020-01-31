@@ -566,18 +566,19 @@ int db__messages_delete(struct mosquitto_db *db, struct mosquitto *context)
 
 	db__messages_delete_list(db, &context->msgs_in.inflight);
 	db__messages_delete_list(db, &context->msgs_in.queued);
-	db__messages_delete_list(db, &context->msgs_out.inflight);
-	db__messages_delete_list(db, &context->msgs_out.queued);
-
 	context->msgs_in.msg_bytes = 0;
 	context->msgs_in.msg_bytes12 = 0;
 	context->msgs_in.msg_count = 0;
 	context->msgs_in.msg_count12 = 0;
 
-	context->msgs_out.msg_bytes = 0;
-	context->msgs_out.msg_bytes12 = 0;
-	context->msgs_out.msg_count = 0;
-	context->msgs_out.msg_count12 = 0;
+	if (context->bridge && context->bridge->clean_start_local) {
+		db__messages_delete_list(db, &context->msgs_out.inflight);
+		db__messages_delete_list(db, &context->msgs_out.queued);
+		context->msgs_out.msg_bytes = 0;
+		context->msgs_out.msg_bytes12 = 0;
+		context->msgs_out.msg_count = 0;
+		context->msgs_out.msg_count12 = 0;
+	}
 
 	return MOSQ_ERR_SUCCESS;
 }
