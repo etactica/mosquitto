@@ -123,12 +123,13 @@ void context__cleanup(struct mosquitto_db *db, struct mosquitto *context, bool d
 	net__socket_close(db, context);
 	if(do_free || context->clean_start){
 		sub__clean_session(db, context);
-		db__messages_delete(db, context);
 	}
+	db__messages_delete(db, context);
 
 	mosquitto__free(context->address);
 	context->address = NULL;
 
+	log__printf(NULL, MOSQ_LOG_ERR, "KARL: Attempting to release will");
 	context__send_will(db, context);
 
 	if(context->id){
@@ -147,9 +148,6 @@ void context__cleanup(struct mosquitto_db *db, struct mosquitto *context, bool d
 		packet = context->out_packet;
 		context->out_packet = context->out_packet->next;
 		mosquitto__free(packet);
-	}
-	if(do_free || context->clean_start){
-		db__messages_delete(db, context);
 	}
 #if defined(WITH_BROKER) && defined(__GLIBC__) && defined(WITH_ADNS)
 	if(context->adns){
